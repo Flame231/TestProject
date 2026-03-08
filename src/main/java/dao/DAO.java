@@ -1,56 +1,64 @@
 package dao;
 
-import org.example.ClassAnn;
+import annotations1.PrimaryKey;
+import annotations1.Table;
+import connection.Connector;
 
 import java.io.Serializable;
 import java.lang.reflect.Field;
 import java.sql.*;
-import java.util.Properties;
-import java.util.ResourceBundle;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
 
-public interface DAO<DTOClass> {
-
-    default void save(DAOInt t) throws SQLException {
-        Class<? extends DAOInt> tClass = t.getClass();
-        Field[] fields = tClass.getDeclaredFields();
-        ClassAnn classAnn = tClass.getAnnotation(ClassAnn.class);
-        try(Connection connection = Connector.getConnector();Statement stmt = connection.createStatement();){
-            stmt.executeUpdate("insert into " + classAnn.value() + "VALUES ('" +  +"')");
-        }
-    }
+public interface DAO<T> {
 
 
-
-
-
-
-
-
-
-    default DAOInt get(DAOInt daoInt, Serializable id) throws SQLException {
-        Class<? extends DAOInt> tClass = daoInt.getClass();
-        ClassAnn classAnn = tClass.getAnnotation(ClassAnn.class);
-        Field[] fields = tClass.getDeclaredFields();
-
-        try (Connection connection = Connector.getConnector();
-             Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("select * from " + classAnn.value() + " where id = " + id)) {
-            ResultSetMetaData rsm = rs.getMetaData();
+    default T save(T t) throws SQLException {
+        try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
+        ) {
+            Class<?> tclass = t.getClass();
+            Table table = tclass.getAnnotation(Table.class);
+            Field[] fields = tclass.getDeclaredFields();
+            for (Field field : fields)
+                field.setAccessible(true);
+            String tableName = table.value(); // Получено из аннотации
+            String columns = Arrays.stream(fields).map(Field::getName).collect(Collectors.joining(", "));
+            String questions = Arrays.stream(fields).map(f -> {
+                try {
+                    return "'" + f.get(t).toString() + "'";
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }).collect(Collectors.joining(", ")); // Сгенерировано по количеству полей
+            String sql = String.format("INSERT INTO %s (%s) VALUES (%s)",
+                    tableName, columns, questions);
+            stmt.executeUpdate(sql, Statement.RETURN_GENERATED_KEYS);
+            ResultSet rs = stmt.getGeneratedKeys();
             rs.next();
-            for (int i = 1; i <= rsm.getColumnCount(); i++) {
-                if (rsm.getColumnType(i) == 4)
-                    fields[i - 1].set(daoInt, rs.getInt(i));
-                if (rsm.getColumnType(i) == 12)
-                    fields[i - 1].set(daoInt, rs.getString(i));
-            }
-        } catch (IllegalAccessException e) {
-            throw new RuntimeException(e);
+            long primary_key = rs.getLong(1);
+            PrimaryKey primaryKey = tclass.getAnnotation(PrimaryKey.class);
+            Arrays.stream(t.getClass().getDeclaredFields()) // 1. Берем все поля
+                    .filter(f -> f.isAnnotationPresent(PrimaryKey.class)) // 2. Фильтруем по аннотации
+                    .findFirst() // 3. Берем первое найденное (возвращает Optional<Field>)
+                    .ifPresent(field -> { // 4. Если нашли — выполняем действия
+                        try {
+                            field.setAccessible(true); // Открываем доступ к private
+                            field.set(t, primary_key);  // Меняем значение
+                        } catch (IllegalAccessException e) {
+                            throw new RuntimeException("Ошибка доступа к полю", e);
+                        }
+                    });
         }
-        return daoInt;
+        return t;
     }
 
+   default T get(Serializable id) throws SQLException{
+        T t;
+        return t;
+   };
 
-/*
-    void update(myInt t) throws SQLException;
+    void update(T t) throws SQLException;
 
-    int delete(Serializable id) throws SQLException;*/
+    int delete(Serializable id) throws SQLException;
 }
