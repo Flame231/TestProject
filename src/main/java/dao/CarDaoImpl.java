@@ -26,7 +26,7 @@ public class CarDaoImpl implements CarDao {
     }
 
 
-    @Override
+
     public Car get(Serializable id) throws SQLException {
         Car car = new Car();
         try (Connection connection = Connector.getConnection();

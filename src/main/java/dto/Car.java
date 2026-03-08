@@ -1,11 +1,12 @@
 package dto;
 
 
-import annotations1.PrimaryKey;
+import annotations1.Column;
 import annotations1.Table;
-import dao.ObjectInterface;
+import dao.ObjectClass;
+
 @Table("car")
-public class Car {
+public class Car extends ObjectClass{
 
     @Override
     public String toString() {
@@ -16,7 +17,7 @@ public class Car {
                 '}';
     }
 
-    @PrimaryKey("primary key")
+    @Column(1)
     private long id = 0;
 
     public Car(String name, String type) {
@@ -29,8 +30,9 @@ public class Car {
         name="name";
         type="type";
     }
-
+    @Column(2)
     private String name;
+    @Column(3)
     private String type;
 
     public long getId() {

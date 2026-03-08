@@ -1,12 +1,17 @@
 package dao;
 
-import annotations1.PrimaryKey;
+import annotations1.Column;
 import annotations1.Table;
 import connection.Connector;
 
 import java.io.Serializable;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -14,7 +19,7 @@ import java.util.stream.Collectors;
 public interface DAO<T> {
 
 
-    default T save(T t) throws SQLException {
+    default ObjectClass save(ObjectClass t) throws SQLException {
         try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
         ) {
             Class<?> tclass = t.getClass();
@@ -37,9 +42,9 @@ public interface DAO<T> {
             ResultSet rs = stmt.getGeneratedKeys();
             rs.next();
             long primary_key = rs.getLong(1);
-            PrimaryKey primaryKey = tclass.getAnnotation(PrimaryKey.class);
+            Column column = tclass.getAnnotation(Column.class);
             Arrays.stream(t.getClass().getDeclaredFields()) // 1. Берем все поля
-                    .filter(f -> f.isAnnotationPresent(PrimaryKey.class)) // 2. Фильтруем по аннотации
+                    .filter(f -> f.isAnnotationPresent(Column.class)) // 2. Фильтруем по аннотации
                     .findFirst() // 3. Берем первое найденное (возвращает Optional<Field>)
                     .ifPresent(field -> { // 4. Если нашли — выполняем действия
                         try {
@@ -53,10 +58,33 @@ public interface DAO<T> {
         return t;
     }
 
-   default T get(Serializable id) throws SQLException{
-        T t;
-        return t;
-   };
+    default ObjectClass get(Serializable id, ObjectClass objectClass) throws SQLException,
+            InstantiationException, IllegalAccessException, NoSuchFieldException {
+        Class<?> tclass = objectClass.getClass();
+        Field[] fields =tclass.getDeclaredFields();
+        List<Integer> list = new ArrayList<>();
+        Table table = tclass.getAnnotation(Table.class);
+        for(int i = 0; i< fields.length;i++){
+            Column column = fields[i].getAnnotation(Column.class);
+            list.add(column.value());
+        }
+           try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
+           ResultSet rs = stmt.executeQuery("select * from " + table.value() + " where id = " + id)){
+               rs.next();
+               for(int i = 0; i< fields.length;i++){
+                   fields[i].setAccessible(true);
+                   Column column = fields[i].getAnnotation(Column.class);
+                   if(fields[i].getType().getName().equals("java.lang.String")) {
+                       fields[i].set(objectClass, rs.getString(column.value()));
+                   }
+                   else{
+                       fields[i].set(objectClass, rs.getLong(column.value()));
+                   }
+               }
+
+           }
+        return objectClass;
+    }
 
     void update(T t) throws SQLException;
 
