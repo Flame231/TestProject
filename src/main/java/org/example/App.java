@@ -11,7 +11,7 @@ public class App {
     public static void main(String[] args) throws SQLException, NoSuchFieldException, InstantiationException, IllegalAccessException {
         DAO dao = new DAOClass();
         Car car = new Car();
-        Car car2 = (Car)(dao.get(33,car));
-        System.out.println(car2);
+     /*   Car car2 = (Car)(dao.get(33,car));*/
+        System.out.println(dao.delete(33, "car"));
     }
 }

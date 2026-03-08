@@ -88,5 +88,11 @@ public interface DAO<T> {
 
     void update(T t) throws SQLException;
 
-    int delete(Serializable id) throws SQLException;
+    default int delete(Serializable id, String table) throws SQLException{
+        try(Connection connection = Connector.getConnection();Statement stmt = connection.createStatement();
+        ){
+            int count = stmt.executeUpdate("delete from " + table + " where id = " + id);
+            return count;
+        }
+    }
 }
