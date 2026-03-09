@@ -7,21 +7,19 @@ import connection.Connector;
 
 import java.io.Serializable;
 import java.lang.reflect.Field;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Statement;
+import java.sql.*;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
 public interface DAO<T> {
 
 
-    default ObjectClass save(ObjectClass t) throws SQLException {
+    default T save(T t) throws SQLException {
         try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
         ) {
             //1.Поиск всех полей данного объекта и установка доступа к приватным полям через рефлексию
             Class<?> tclass = t.getClass();
+            Class<PrimaryKey> primaryKeyClass = PrimaryKey.class;
             Table tableAnnotation = tclass.getAnnotation(Table.class);
             String tableName = tableAnnotation.value();
             Field[] fields = tclass.getDeclaredFields();
@@ -48,9 +46,9 @@ public interface DAO<T> {
             long primary_key = resultSet.getLong(1);
 
             //4. Поиск первичного ключа по соответствующей аннотации и присвоение ему значения через рефлексию
-            PrimaryKey primaryKey = tclass.getAnnotation(PrimaryKey.class);
+
             for (Field field : fields) {
-                if (field.isAnnotationPresent(PrimaryKey.class)) {
+                if (field.isAnnotationPresent(primaryKeyClass)) {
                     field.set(t, primary_key);
                 }
             }
@@ -60,7 +58,7 @@ public interface DAO<T> {
         return t;
     }
 
-    default ObjectClass get(Serializable id, ObjectClass objectClass) throws SQLException,
+    default T get(Serializable id, T objectClass) throws SQLException,
             InstantiationException, IllegalAccessException, NoSuchFieldException {
         Class<?> tclass = objectClass.getClass();
         Field[] fields = tclass.getDeclaredFields();
@@ -100,7 +98,11 @@ public interface DAO<T> {
     default int delete(Serializable id, String table) throws SQLException {
         try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
         ) {
-            int count = stmt.executeUpdate("delete from " + table + " where id = " + id);
+            DatabaseMetaData databaseMetaData = connection.getMetaData();
+            ResultSet resultSet = databaseMetaData.getPrimaryKeys(null, null, table);
+            resultSet.next();
+            String primaryKeyName = resultSet.getString("COLUMN_NAME");
+            int count = stmt.executeUpdate("delete from " + table + " where " + primaryKeyName + " = " + id);
             return count;
         }
     }
