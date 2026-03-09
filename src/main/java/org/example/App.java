@@ -12,6 +12,10 @@ public class App {
         DAO dao = new DAOClass();
         Car car = new Car();
      /*   Car car2 = (Car)(dao.get(33,car));*/
-        System.out.println(dao.delete(33, "car"));
+        Car car3 = (Car)dao.save(car);
+        System.out.println(car.getId());
+        Car car2 = new Car();
+        dao.get(4,car2);
+        System.out.println(car2);
     }
 }

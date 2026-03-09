@@ -2,6 +2,7 @@ package dto;
 
 
 import annotations1.Column;
+import annotations1.PrimaryKey;
 import annotations1.Table;
 import dao.ObjectClass;
 
@@ -17,7 +18,7 @@ public class Car extends ObjectClass{
                 '}';
     }
 
-    @Column(1)
+    @PrimaryKey("id")
     private long id = 0;
 
     public Car(String name, String type) {
@@ -27,12 +28,12 @@ public class Car extends ObjectClass{
 
     public Car() {
         id=0;
-        name="name";
-        type="type";
+        name="name1222";
+        type="type1222";
     }
-    @Column(2)
+    @Column("name")
     private String name;
-    @Column(3)
+    @Column("type")
     private String type;
 
     public long getId() {
