@@ -4,10 +4,9 @@ package dto;
 import annotations1.Column;
 import annotations1.PrimaryKey;
 import annotations1.Table;
-import dao.ObjectClass;
 
 @Table("car")
-public class Car extends ObjectClass{
+public class Car{
 
     @Override
     public String toString() {

@@ -12,15 +12,16 @@ import java.util.Arrays;
 import java.util.stream.Collectors;
 
 public interface DAO<T> {
-
+    Class<Table> tableClass = Table.class;
+    Class<Column> columnClass = Column.class;
+    Class<PrimaryKey> primaryKeyClass = PrimaryKey.class;
 
     default T save(T t) throws SQLException {
         try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
         ) {
             //1.Поиск всех полей данного объекта и установка доступа к приватным полям через рефлексию
             Class<?> tclass = t.getClass();
-            Class<PrimaryKey> primaryKeyClass = PrimaryKey.class;
-            Table tableAnnotation = tclass.getAnnotation(Table.class);
+            Table tableAnnotation = tclass.getAnnotation(tableClass);
             String tableName = tableAnnotation.value();
             Field[] fields = tclass.getDeclaredFields();
             for (Field field : fields)
@@ -68,10 +69,8 @@ public interface DAO<T> {
             InstantiationException, IllegalAccessException, NoSuchFieldException {
         Class<?> tclass = t.getClass();
         Field[] fields = tclass.getDeclaredFields();
-        Class<Table> tableClass = Table.class;
-        Class<Column> columnClass = Column.class;
-        Class<PrimaryKey> primaryKeyClass = PrimaryKey.class;
         Table table = tclass.getAnnotation(tableClass);
+        String tableName = table.value();
         String primaryKeyName = null;
         for (Field field : fields) {
             if (field.isAnnotationPresent(primaryKeyClass)) {
@@ -79,7 +78,7 @@ public interface DAO<T> {
             }
         }
         try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("select * from " + table.value() + " where " + primaryKeyName + " = " + id)) {
+             ResultSet rs = stmt.executeQuery("select * from " + tableName + " where " + primaryKeyName + " = " + id)) {
             ResultSetMetaData rsmd = rs.getMetaData();
             rs.next();
             for (int i = 0; i < fields.length; i++) {
@@ -92,6 +91,9 @@ public interface DAO<T> {
                             fields[i].set(t, rs.getInt(column.value()));
                             break;
                         case 12:
+                            fields[i].set(t, rs.getString(column.value()));
+                            break;
+                        case -1:
                             fields[i].set(t, rs.getString(column.value()));
                             break;
                         case 91:
@@ -115,11 +117,10 @@ public interface DAO<T> {
 
     default void update(T t) throws SQLException {
         Class<?> tclass = t.getClass();
-        Class<Table> tableClass = Table.class;
         Table table = tclass.getAnnotation(tableClass);
         try (Connection connection = Connector.getConnection();
              Statement stmt = connection.createStatement();) {
-Field[] fields = tclass.getDeclaredFields();
+            Field[] fields = tclass.getDeclaredFields();
             String values = Arrays.stream(fields).map(f -> {
                 try {
                     f.setAccessible(true);
@@ -139,9 +140,9 @@ Field[] fields = tclass.getDeclaredFields();
             long primaryKeyFieldValue = 0;
             String primaryKeyName = null;
             for (Field field : fields) {
-                if (field.isAnnotationPresent(PrimaryKey.class)) {
-                    primaryKeyName = field.getAnnotation(PrimaryKey.class).value();
-                    primaryKeyFieldValue = (long)field.get(t);
+                if (field.isAnnotationPresent(primaryKeyClass)) {
+                    primaryKeyName = field.getAnnotation(primaryKeyClass).value();
+                    primaryKeyFieldValue = (long) field.get(t);
                 }
             }
 
@@ -149,7 +150,7 @@ Field[] fields = tclass.getDeclaredFields();
             String sql = String.format("UPDATE %s SET %s WHERE %s = %s",
                     table.value(), values, primaryKeyName, primaryKeyFieldValue);
             System.out.println(sql);
-               stmt.executeUpdate(sql);
+            stmt.executeUpdate(sql);
 
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
