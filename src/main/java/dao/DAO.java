@@ -28,16 +28,22 @@ public interface DAO<T> {
 
             //2.Склеивание запроса SQL c использованием названия полей и их значений
             String columns = Arrays.stream(fields).map(Field::getName).collect(Collectors.joining(", "));
-            String questions = Arrays.stream(fields).map(f -> {
+            String values = Arrays.stream(fields).map(f -> {
                 try {
-                    return "'" + f.get(t).toString() + "'";
+                    if (!(f.getType().isPrimitive()
+                            && f.getType() != boolean.class
+                            && f.getType() != char.class
+                            && f.getType() != void.class)) {
+                        return "'" + f.get(t).toString() + "'";
+                    } else {
+                        return f.get(t).toString();
+                    }
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
             }).collect(Collectors.joining(", ")); // Сгенерировано по количеству полей
             String sql = String.format("INSERT INTO %s (%s) VALUES (%s)",
-                    tableName, columns, questions);
-
+                    tableName, columns, values);
 
             //3.Возвращение сгенерированного ключа
             stmt.executeUpdate(sql, Statement.RETURN_GENERATED_KEYS);
@@ -58,9 +64,9 @@ public interface DAO<T> {
         return t;
     }
 
-    default T get(Serializable id, T objectClass) throws SQLException,
+    default T get(Serializable id, T t) throws SQLException,
             InstantiationException, IllegalAccessException, NoSuchFieldException {
-        Class<?> tclass = objectClass.getClass();
+        Class<?> tclass = t.getClass();
         Field[] fields = tclass.getDeclaredFields();
         Class<Table> tableClass = Table.class;
         Class<Column> columnClass = Column.class;
@@ -74,26 +80,82 @@ public interface DAO<T> {
         }
         try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
              ResultSet rs = stmt.executeQuery("select * from " + table.value() + " where " + primaryKeyName + " = " + id)) {
+            ResultSetMetaData rsmd = rs.getMetaData();
             rs.next();
             for (int i = 0; i < fields.length; i++) {
                 fields[i].setAccessible(true);
                 Column column = fields[i].getAnnotation(columnClass);
                 if (fields[i].isAnnotationPresent(columnClass)) {
-                    if (fields[i].getType().getName().equals("java.lang.String")) {
-                        fields[i].set(objectClass, rs.getString(column.value()));
-                    } else {
-                        fields[i].set(objectClass, rs.getLong(column.value()));
+                    int columnType = rsmd.getColumnType(rs.findColumn(column.value()));
+                    switch (columnType) {
+                        case 4:
+                            fields[i].set(t, rs.getInt(column.value()));
+                            break;
+                        case 12:
+                            fields[i].set(t, rs.getString(column.value()));
+                            break;
+                        case 91:
+                            fields[i].set(t, rs.getDate(column.value()));
+                            break;
+                        case 92:
+                            fields[i].set(t, rs.getTime(column.value()));
+                            break;
+                        case 93:
+                            fields[i].set(t, rs.getTimestamp(column.value()));
+                            break;
                     }
                 }
                 if (fields[i].isAnnotationPresent(primaryKeyClass)) {
-                    fields[i].set(objectClass, rs.getLong(fields[i].getAnnotation(primaryKeyClass).value()));
+                    fields[i].set(t, rs.getLong(fields[i].getAnnotation(primaryKeyClass).value()));
                 }
             }
         }
-        return objectClass;
+        return t;
     }
 
-    void update(T t) throws SQLException;
+    default void update(T t) throws SQLException {
+        Class<?> tclass = t.getClass();
+        Class<Table> tableClass = Table.class;
+        Table table = tclass.getAnnotation(tableClass);
+        try (Connection connection = Connector.getConnection();
+             Statement stmt = connection.createStatement();) {
+Field[] fields = tclass.getDeclaredFields();
+            String values = Arrays.stream(fields).map(f -> {
+                try {
+                    f.setAccessible(true);
+                    String name = f.getName() + " = ";
+                    if (!(f.getType().isPrimitive()
+                            && f.getType() != boolean.class
+                            && f.getType() != char.class
+                            && f.getType() != void.class)) {
+                        return name + "'" + f.get(t).toString() + "'";
+                    } else {
+                        return name + f.get(t).toString();
+                    }
+                } catch (IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }).collect(Collectors.joining(", "));
+            long primaryKeyFieldValue = 0;
+            String primaryKeyName = null;
+            for (Field field : fields) {
+                if (field.isAnnotationPresent(PrimaryKey.class)) {
+                    primaryKeyName = field.getAnnotation(PrimaryKey.class).value();
+                    primaryKeyFieldValue = (long)field.get(t);
+                }
+            }
+
+            // Сгенерировано по количеству полей
+            String sql = String.format("UPDATE %s SET %s WHERE %s = %s",
+                    table.value(), values, primaryKeyName, primaryKeyFieldValue);
+            System.out.println(sql);
+               stmt.executeUpdate(sql);
+
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
 
     default int delete(Serializable id, String table) throws SQLException {
         try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();

@@ -6,10 +6,7 @@ import java.sql.SQLException;
 public class DAOClass implements DAO{
 
 
-    @Override
-    public void update(Object o) throws SQLException {
 
-    }
 
 
     public int delete(Serializable id) throws SQLException {
