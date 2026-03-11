@@ -1,8 +1,8 @@
 package dto;
 
-import annotations1.Column;
-import annotations1.PrimaryKey;
-import annotations1.Table;
+import myAnnotations.Column;
+import myAnnotations.PrimaryKey;
+import myAnnotations.Table;
 
 import java.sql.Time;
 import java.sql.Timestamp;

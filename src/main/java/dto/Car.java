@@ -1,12 +1,12 @@
 package dto;
 
 
-import annotations1.Column;
-import annotations1.PrimaryKey;
-import annotations1.Table;
+import myAnnotations.Column;
+import myAnnotations.PrimaryKey;
+import myAnnotations.Table;
 
 @Table("car")
-public class Car{
+public class Car {
 
     @Override
     public String toString() {
@@ -18,7 +18,7 @@ public class Car{
     }
 
     @PrimaryKey("id")
-    private long id = 0;
+    private long id;
 
     public Car(String name, String type) {
         this.name = name;
@@ -26,10 +26,10 @@ public class Car{
     }
 
     public Car() {
-        id=0;
-        name="name1222";
-        type="type1222";
+        name = "name1222";
+        type = "type1222";
     }
+
     @Column("name")
     private String name;
     @Column("type")

@@ -1,8 +1,8 @@
 package dto;
 
-import annotations1.Column;
-import annotations1.PrimaryKey;
-import annotations1.Table;
+import myAnnotations.Column;
+import myAnnotations.PrimaryKey;
+import myAnnotations.Table;
 
 import java.sql.Time;
 
@@ -36,6 +36,7 @@ public class Plane {
 
     public Plane() {
     }
+
     public Plane(String model, String type, String time) {
         this.model = model;
         this.type = type;
