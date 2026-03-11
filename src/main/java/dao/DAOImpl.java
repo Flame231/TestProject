@@ -14,9 +14,14 @@ import java.util.stream.Collectors;
 
 public class DAOImpl<T> implements DAO<T> {
     Class<T> tclass;
-    Class<Table> tableClass = Table.class;
     Class<Column> columnClass = Column.class;
     Class<PrimaryKey> primaryKeyClass = PrimaryKey.class;
+
+    String saveQuery = "INSERT INTO %s (%s) VALUES (%s)";
+    String getQuery = "SELECT * FROM %s WHERE %s = %s";
+    String updateQuery = "UPDATE %s SET %s WHERE %s = %s";
+    String deleteQuery = "delete from %s where %s = %s";
+    String quote = "'";
 
     public String getTableAnnotationValue() {
         return tclass.getAnnotation(Table.class).value();
@@ -67,7 +72,7 @@ public class DAOImpl<T> implements DAO<T> {
                     throw new RuntimeException(e);
                 }
             }).collect(Collectors.joining(", ")); // Сгенерировано по количеству полей
-            String sql = String.format("INSERT INTO %s (%s) VALUES (%s)",
+            String sql = String.format(saveQuery,
                     tableName, columns, values);
             stmt.executeUpdate(sql, Statement.RETURN_GENERATED_KEYS);
             ResultSet resultSet = stmt.getGeneratedKeys();
@@ -91,15 +96,16 @@ public class DAOImpl<T> implements DAO<T> {
         T t = getNewInstance();
         Field[] fields = t.getClass().getDeclaredFields();
 
-
         String primaryKeyName = null;
         for (Field field : fields) {
             if (field.isAnnotationPresent(primaryKeyClass)) {
                 primaryKeyName = field.getAnnotation(primaryKeyClass).value();
             }
         }
+
+        String query = String.format(getQuery, tableName, primaryKeyName, id);
         try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("select * from " + tableName + " where " + primaryKeyName + " = " + id)) {
+             ResultSet rs = stmt.executeQuery(query)) {
             ResultSetMetaData rsmd = rs.getMetaData();
             rs.next();
             for (int i = 0; i < fields.length; i++) {
@@ -167,7 +173,7 @@ public class DAOImpl<T> implements DAO<T> {
                 }
             }
 
-            String sql = String.format("UPDATE %s SET %s WHERE %s = %s",
+            String sql = String.format(updateQuery,
                     tableName, values, primaryKeyName, primaryKeyFieldValue);
             System.out.println(sql);
             stmt.executeUpdate(sql);
@@ -186,7 +192,8 @@ public class DAOImpl<T> implements DAO<T> {
             ResultSet resultSet = databaseMetaData.getPrimaryKeys(null, null, table);
             resultSet.next();
             String primaryKeyName = resultSet.getString("COLUMN_NAME");
-            int count = stmt.executeUpdate("delete from " + table + " where " + primaryKeyName + " = " + id);
+            String query = String.format(deleteQuery, table, primaryKeyName, id);
+            int count = stmt.executeUpdate(query);
             return count;
         }
     }
