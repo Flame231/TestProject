@@ -11,31 +11,25 @@ import java.sql.*;
 import java.util.Arrays;
 import java.util.stream.Collectors;
 
-
 public class DAOImpl<T> implements DAO<T> {
+
     Class<T> tclass;
     Class<Column> columnClass = Column.class;
     Class<PrimaryKey> primaryKeyClass = PrimaryKey.class;
+    Class<?>[] primitiveTypes = {Byte.class, Short.class, Integer.class, Long.class};
 
     String saveQuery = "INSERT INTO %s (%s) VALUES (%s)";
     String getQuery = "SELECT * FROM %s WHERE %s = %s";
     String updateQuery = "UPDATE %s SET %s WHERE %s = %s";
-    String deleteQuery = "delete from %s where %s = %s";
+    String deleteQuery = "DELETE FROM %s WHERE %s = %s";
     String quote = "'";
+    String coma = ",";
 
     public String getTableAnnotationValue() {
         return tclass.getAnnotation(Table.class).value();
     }
 
-    public PrimaryKey getPrimaryKeyAnnotation(Field field) {
-        return tclass.getAnnotation(PrimaryKey.class);
-    }
-
-    public String getColumnAnntationValue() {
-        return tclass.getAnnotation(Column.class).value();
-    }
-
-    public Field[] getFields() {
+    public Field[] getFields() {   //Получить массив полей и открыть доступ к ним
         Field[] fields = tclass.getDeclaredFields();
         for (Field field : fields) {
             field.setAccessible(true);
@@ -43,44 +37,47 @@ public class DAOImpl<T> implements DAO<T> {
         return fields;
     }
 
-    public T getNewInstance() throws InstantiationException, IllegalAccessException {
+    public T getNewInstance() throws InstantiationException, IllegalAccessException {   //Создать новый объект данного типа
         return tclass.newInstance();
     }
 
-    public DAOImpl(Class<T> tclass) {
+    public void getColumnValue(ResultSet rs, int columnType, Field field, T t) {
+
+    }
+
+    public DAOImpl(Class<T> tclass) {   //Конструктор передаёт тип класса dto с которым будем работать
         this.tclass = tclass;
     }
 
     @Override
     public T save(T t) throws SQLException {
         String tableName = getTableAnnotationValue();
+        Field[] fields = getFields();//Получаем массив всех полей данного класса dto
         try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
         ) {
-            Field[] fields = getFields();
-            String columns = Arrays.stream(fields).map(Field::getName).collect(Collectors.joining(", "));
-            String values = Arrays.stream(fields).map(f -> {
+            String columns = Arrays.stream(fields).map(Field::getName).collect(Collectors.joining(coma));// Перебираем массив полей,
+            // извлекаем их название и склеиваем
+            //через запятую в одну строку
+            String values = Arrays.stream(fields).map(f -> { //Перебираем массив значений полей и склеиваем в одну строку через запятую
                 try {
-                    if (!(f.getType().isPrimitive()
-                            && f.getType() != boolean.class
-                            && f.getType() != char.class
-                            && f.getType() != void.class)) {
-                        return "'" + f.get(t).toString() + "'";
-                    } else {
-                        return f.get(t).toString();
+                    for (Class<?> types : primitiveTypes) {//Проверка является ли значения поля числом
+                        if (f.get(t).getClass() == types) {
+                            return f.get(t).toString();
+                        }
                     }
+                    return quote + f.get(t).toString() + quote;//Добавить одинарные кавычки если значение - не число
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
-            }).collect(Collectors.joining(", ")); // Сгенерировано по количеству полей
-            String sql = String.format(saveQuery,
-                    tableName, columns, values);
-            stmt.executeUpdate(sql, Statement.RETURN_GENERATED_KEYS);
+            }).collect(Collectors.joining(coma));
+            String sql = String.format(saveQuery, tableName, columns, values); //Собрать запрос
+            stmt.executeUpdate(sql, Statement.RETURN_GENERATED_KEYS); //Сохранить объект и вернуть его первичный ключ
             ResultSet resultSet = stmt.getGeneratedKeys();
             resultSet.next();
-            long primary_key = resultSet.getLong(1);
+            long primary_key = resultSet.getLong(1);//Получить первичный ключ из объекта ResultSet (всегда индекс = "1")
             for (Field field : fields) {
                 if (field.isAnnotationPresent(primaryKeyClass)) {
-                    field.set(t, primary_key);
+                    field.set(t, primary_key); //Установить первичный ключ нашему объекту
                 }
             }
         } catch (IllegalAccessException e) {
@@ -92,50 +89,46 @@ public class DAOImpl<T> implements DAO<T> {
     @Override
     public T get(Serializable id) throws SQLException,
             InstantiationException, IllegalAccessException, NoSuchFieldException {
-        String tableName = getTableAnnotationValue();
-        T t = getNewInstance();
-        Field[] fields = t.getClass().getDeclaredFields();
-
+        T t = getNewInstance(); //Создать новый объект указанного типа
+        String tableName = getTableAnnotationValue(); // Извлекаем значение аннотации Table которое является названием таблицы в mySQL
+        Field[] fields = getFields();
         String primaryKeyName = null;
         for (Field field : fields) {
-            if (field.isAnnotationPresent(primaryKeyClass)) {
+            if (field.isAnnotationPresent(primaryKeyClass)) { //Перебираем поля нашего класса и ищем аннотацию PrimaryKey,
+                // извлекаем её значение которое является названием ключа в mySQL
                 primaryKeyName = field.getAnnotation(primaryKeyClass).value();
             }
         }
-
         String query = String.format(getQuery, tableName, primaryKeyName, id);
         try (Connection connection = Connector.getConnection(); Statement stmt = connection.createStatement();
              ResultSet rs = stmt.executeQuery(query)) {
             ResultSetMetaData rsmd = rs.getMetaData();
             rs.next();
-            for (int i = 0; i < fields.length; i++) {
-                fields[i].setAccessible(true);
-                Column column = fields[i].getAnnotation(columnClass);
-                if (fields[i].isAnnotationPresent(columnClass)) {
+            for (Field field : fields) {
+                Column column = field.getAnnotation(columnClass);
+                if (field.isAnnotationPresent(columnClass)) {
                     int columnType = rsmd.getColumnType(rs.findColumn(column.value()));
-                    switch (columnType) {
+                    switch (columnType) {//в зависимости от типа получаемого из mySQL значения присваиваем в наш объект значение соответствующего типа
                         case 4:
-                            fields[i].set(t, rs.getInt(column.value()));
+                            field.set(t, rs.getInt(column.value()));
                             break;
-                        case 12:
-                            fields[i].set(t, rs.getString(column.value()));
-                            break;
-                        case -1:
-                            fields[i].set(t, rs.getString(column.value()));
+                        case 12, -1:
+                            field.set(t, rs.getString(column.value()));
                             break;
                         case 91:
-                            fields[i].set(t, rs.getDate(column.value()));
+                            field.set(t, rs.getDate(column.value()));
                             break;
                         case 92:
-                            fields[i].set(t, rs.getTime(column.value()));
+                            field.set(t, rs.getTime(column.value()));
                             break;
                         case 93:
-                            fields[i].set(t, rs.getTimestamp(column.value()));
+                            field.set(t, rs.getTimestamp(column.value()));
                             break;
                     }
                 }
-                if (fields[i].isAnnotationPresent(primaryKeyClass)) {
-                    fields[i].set(t, rs.getLong(fields[i].getAnnotation(primaryKeyClass).value()));
+                if (field.isAnnotationPresent(primaryKeyClass)) {
+                    field.set(t, rs.getLong(field.getAnnotation(primaryKeyClass).value())); // Находим в объекте поле с аннотацией PrimaryKey
+                    //и устанавливаем ей значение из колонки таблицы название которой равно значению аннотации PrimaryKey
                 }
             }
         }
@@ -147,41 +140,33 @@ public class DAOImpl<T> implements DAO<T> {
         String tableName = getTableAnnotationValue();
         try (Connection connection = Connector.getConnection();
              Statement stmt = connection.createStatement();) {
-            Field[] fields = tclass.getDeclaredFields();
+            Field[] fields = getFields();
             String values = Arrays.stream(fields).map(f -> {
                 try {
-                    f.setAccessible(true);
-                    String name = f.getName() + " = ";
-                    if (!(f.getType().isPrimitive()
-                            && f.getType() != boolean.class
-                            && f.getType() != char.class
-                            && f.getType() != void.class)) {
-                        return name + "'" + f.get(t).toString() + "'";
-                    } else {
-                        return name + f.get(t).toString();
+                    for (Class<?> types : primitiveTypes) {//Проверка является ли значения поля числом
+                        if (f.get(t).getClass() == types) {
+                            return f.get(t).toString();
+                        }
                     }
+                    return quote + f.get(t).toString() + quote;//Добавить одинарные кавычки если значение - не число
                 } catch (IllegalAccessException e) {
                     throw new RuntimeException(e);
                 }
-            }).collect(Collectors.joining(", "));
+            }).collect(Collectors.joining(coma));
             long primaryKeyFieldValue = 0;
             String primaryKeyName = null;
             for (Field field : fields) {
                 if (field.isAnnotationPresent(primaryKeyClass)) {
                     primaryKeyName = field.getAnnotation(primaryKeyClass).value();
-                    primaryKeyFieldValue = (long) field.get(t);
+                    primaryKeyFieldValue = (long) field.get(t); //получаем значение первичного ключа из объекта для вставки в запрос
                 }
             }
-
             String sql = String.format(updateQuery,
                     tableName, values, primaryKeyName, primaryKeyFieldValue);
-            System.out.println(sql);
-            stmt.executeUpdate(sql);
-
+            stmt.executeUpdate(sql); // выполнить обновление записи
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
-
     }
 
     @Override
@@ -193,10 +178,7 @@ public class DAOImpl<T> implements DAO<T> {
             resultSet.next();
             String primaryKeyName = resultSet.getString("COLUMN_NAME");
             String query = String.format(deleteQuery, table, primaryKeyName, id);
-            int count = stmt.executeUpdate(query);
-            return count;
+            return stmt.executeUpdate(query);
         }
     }
-
-
 }

@@ -12,8 +12,8 @@ public class Car {
     public String toString() {
         return "Car{" +
                 "id=" + id +
-                ", name='" + name + '\'' +
-                ", type='" + type + '\'' +
+                ", name=" + name +
+                ", type=" + type +
                 '}';
     }
 
